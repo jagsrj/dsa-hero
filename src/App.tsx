@@ -6,6 +6,7 @@ import { CourseMap } from './pages/CourseMap';
 import { ModulePage } from './pages/ModulePage';
 import { ReviewPage } from './pages/ReviewPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { SignInPage } from './pages/SignIn';
 
 // The code editor is the heaviest dependency: load it only on pages that need it.
 const ProblemPage = lazy(() => import('./pages/ProblemPage').then((m) => ({ default: m.ProblemPage })));
@@ -27,6 +28,7 @@ export default function App() {
             <Route path="review" element={<ReviewPage />} />
             <Route path="exam/:phaseId" element={<ExamPage />} />
             <Route path="profile" element={<ProfilePage />} />
+            <Route path="signin" element={<SignInPage />} />
             <Route path="playground" element={<Playground />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

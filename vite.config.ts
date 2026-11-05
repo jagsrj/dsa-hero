@@ -1,4 +1,4 @@
-import { defineConfig, type Plugin } from 'vite';
+import { defineConfig, type Connect, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
@@ -15,8 +15,17 @@ function localJavaRunner(): Plugin {
     res.end(JSON.stringify(out));
   };
   // must return void: a function returned from configureServer is treated as a post-hook by Vite
-  const mount = (server: { middlewares: { use: (path: string, fn: (req: IncomingMessage, res: ServerResponse) => void) => unknown } }): void => {
-    server.middlewares.use('/__local_run', (req, res) => { handler(req, res).catch((e) => { res.statusCode = 500; res.end(String(e)); }); });
+  const mount = (server: { middlewares: Connect.Server }): void => {
+    server.middlewares.use('/__local_run', (req: IncomingMessage, res: ServerResponse) => { handler(req, res).catch((e) => { res.statusCode = 500; res.end(String(e)); }); });
+    // DEV_FUNCTIONS=1: run functions/ (profiles, sync) with an in-memory KV
+    if (process.env.DEV_FUNCTIONS) {
+      server.middlewares.use(async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+        try {
+          const { handleFunction } = await import('./scripts/devFunctions.ts');
+          if (!(await handleFunction(req, res, process.cwd()))) next();
+        } catch (e) { res.statusCode = 500; res.end(String(e)); }
+      });
+    }
   };
   return { name: 'local-java-runner', configureServer: mount, configurePreviewServer: mount };
 }

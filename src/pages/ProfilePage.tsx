@@ -4,6 +4,7 @@ import { levelInfo } from '../state/progress';
 import { BADGES, exportProgress, importProgress, resetProgress, update, useProgress } from '../state/store';
 import { getEngine } from '../runner/engine';
 import { Heatmap } from '../ui/widgets';
+import { AccountCard } from '../ui/Account';
 
 export function ProfilePage() {
   const s = useProgress();
@@ -29,6 +30,8 @@ export function ProfilePage() {
         <p className="eyebrow">Level {lv.level} · {lv.title}</p>
         <h1>{s.name || 'Your profile'}</h1>
       </header>
+
+      <AccountCard />
 
       <div className="stats">
         <div className="stat card"><b>{s.xp.toLocaleString()}</b><span>XP</span></div>
@@ -88,7 +91,7 @@ export function ProfilePage() {
           <span className="muted small">{getEngine().name} · Java 17</span>
         </div>
         <h3>Your data</h3>
-        <p className="muted small">Progress is stored only in this browser. Export it to back it up or move to another device.</p>
+        <p className="muted small">Signed-in progress is saved to your profile automatically. You can also export a copy as a file.</p>
         <div className="row wrap">
           <button className="btn" onClick={download}>Export progress</button>
           <button className="btn" onClick={() => fileRef.current?.click()}>Import progress</button>

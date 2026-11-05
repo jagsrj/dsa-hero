@@ -9,6 +9,9 @@ import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/600.css';
 import './styles.css';
 import App from './App';
+import { startSync } from './state/sync';
+
+startSync();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

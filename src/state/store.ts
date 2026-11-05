@@ -46,13 +46,18 @@ export interface Celebration { kind: 'gate' | 'phase' | 'boss' | 'streak'; title
 
 export interface State {
   version: 1;
+  /** random id of this browser; XP is counted per device so two devices' XP add up when synced */
+  deviceId: string;
   name: string;
   createdAt: string;
   xp: number;
+  xpByDevice: Record<string, number>;
   days: Record<string, DayActivity>;
   streak: { current: number; longest: number; lastDay: string | null; freezes: number; frozenDays: string[] };
   problems: Record<string, ProblemProgress>;
   code: Record<string, string>;
+  /** when each problem's code was last edited (ms), so sync keeps the newest version */
+  codeAt: Record<string, number>;
   modules: Record<string, ModuleProgress>;
   phases: Record<number, PhaseProgress>;
   review: Record<string, { box: number; due: string }>;
@@ -65,16 +70,25 @@ export interface State {
 
 const KEY = 'dsa-hero-progress-v1';
 
+export function newDeviceId(): string {
+  const b = new Uint8Array(8);
+  crypto.getRandomValues(b);
+  return 'd' + [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
+}
+
 export function initialState(): State {
   return {
     version: 1,
+    deviceId: newDeviceId(),
     name: '',
     createdAt: new Date().toISOString(),
     xp: 0,
+    xpByDevice: {},
     days: {},
     streak: { current: 0, longest: 0, lastDay: null, freezes: 0, frozenDays: [] },
     problems: {},
     code: {},
+    codeAt: {},
     modules: {},
     phases: {},
     review: {},
@@ -92,7 +106,11 @@ function load(): State {
     if (!raw) return initialState();
     const parsed = JSON.parse(raw) as Partial<State>;
     const base = initialState();
-    return { ...base, ...parsed, settings: { ...base.settings, ...parsed.settings }, counters: { ...base.counters, ...parsed.counters }, streak: { ...base.streak, ...parsed.streak } } as State;
+    const st = { ...base, ...parsed, settings: { ...base.settings, ...parsed.settings }, counters: { ...base.counters, ...parsed.counters }, streak: { ...base.streak, ...parsed.streak } } as State;
+    // migrate progress saved before sync existed
+    if (!st.xpByDevice || !Object.keys(st.xpByDevice).length) st.xpByDevice = st.xp ? { [st.deviceId]: st.xp } : {};
+    if (!st.codeAt) st.codeAt = {};
+    return st;
   } catch {
     return initialState();
   }
@@ -111,9 +129,21 @@ function persist() {
 
 export function getState(): State { return state; }
 
+const changeHooks = new Set<() => void>();
+/** Called after every local change (used by sync to schedule a backup). */
+export function onLocalChange(fn: () => void) { changeHooks.add(fn); return () => changeHooks.delete(fn); }
+
 export function update(fn: (s: State) => void) {
   const next = structuredClone(state);
   fn(next);
+  state = next;
+  persist();
+  listeners.forEach((l) => l());
+  changeHooks.forEach((h) => h());
+}
+
+/** Replace the whole state (after a sync merge) without scheduling another sync. */
+export function replaceState(next: State) {
   state = next;
   persist();
   listeners.forEach((l) => l());
@@ -194,6 +224,7 @@ export function addXp(amount: number, reason: string) {
   const today = dayKey();
   update((s) => {
     s.xp += amount;
+    s.xpByDevice[s.deviceId] = (s.xpByDevice[s.deviceId] ?? 0) + amount;
     (s.days[today] ??= { solves: 0, reviews: 0, xp: 0 }).xp += amount;
   });
   pushToast({ kind: 'xp', title: `+${amount} XP`, body: reason });
@@ -243,7 +274,10 @@ export function importProgress(json: string): boolean {
   try {
     const parsed = JSON.parse(json);
     if (parsed?.version !== 1) return false;
-    state = { ...initialState(), ...parsed };
+    const base = initialState();
+    state = { ...base, ...parsed, deviceId: state.deviceId, settings: state.settings };
+    if (!state.xpByDevice || !Object.keys(state.xpByDevice).length) state.xpByDevice = state.xp ? { [state.deviceId]: state.xp } : {};
+    if (!state.codeAt) state.codeAt = {};
     persist();
     listeners.forEach((l) => l());
     return true;

@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { useProgress } from '../state/store';
 import { dueCards } from '../state/progress';
 import { CelebrationModal, StreakChip, Toasts, XpChip } from './widgets';
+import { ProfileChip } from './Account';
 
 const NAV = [
   { to: '/', label: 'Home', icon: '⌂', end: true },
@@ -44,6 +45,7 @@ export function Layout() {
         <div className="topbar-right">
           <StreakChip />
           <XpChip />
+          <ProfileChip />
         </div>
       </header>
       <main id="main" className="main">

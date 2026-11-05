@@ -5,6 +5,9 @@ import { dayKey } from '../state/dates';
 import { currentModule, dueCards, ensureDaily, gateStatus, levelInfo, nextStep, LEVELS } from '../state/progress';
 import { effectiveStreak, update, useProgress } from '../state/store';
 import { Flame, Heatmap, ProgressRing } from '../ui/widgets';
+import { SaveProgressNudge } from '../ui/Account';
+import { useAuth } from '../state/sync';
+import { pushToast } from '../state/store';
 
 function Onboarding() {
   const [name, setName] = useState('');
@@ -25,7 +28,7 @@ function Onboarding() {
             <input id="nm" placeholder="Your first name (optional)" value={name} onChange={(e) => setName(e.target.value)} autoComplete="given-name" />
             <button className="btn primary lg" type="submit">Start lesson 1 →</button>
           </form>
-          <p className="muted small">Free. No account needed — your progress is saved in this browser.</p>
+          <p className="muted small">Free. Start right away as a guest, or <Link to="/signin">sign in</Link> to pick up where you left off.</p>
         </div>
         <div className="hero-art" aria-hidden>
           <div className="hero-card c1"><span className="pill guided">Concept</span><b>Big-O</b><span>How code scales</span></div>
@@ -54,7 +57,18 @@ function Onboarding() {
 
 export function Home() {
   const s = useProgress();
+  const auth = useAuth();
   useEffect(() => { if (s.onboarded) ensureDaily(s); }, [s]);
+  // returning from "Continue with Google"
+  useEffect(() => {
+    const p = new URLSearchParams(location.search);
+    if (p.get('signedin') === 'google') {
+      update((st) => { st.onboarded = true; });
+      pushToast({ kind: 'info', title: p.get('new') ? 'Profile created with Google 🎉' : 'Signed in with Google', body: 'Your progress now saves to your profile.' });
+      history.replaceState(null, '', '/');
+    }
+  }, []);
+  useEffect(() => { if (auth.user && !s.name) update((st) => { st.name = auth.user!.username; }); }, [auth.user, s.name]);
   if (!s.onboarded) return <Onboarding />;
 
   const st = effectiveStreak(s);
@@ -79,6 +93,8 @@ export function Home() {
           <p className="muted">{st.doneToday ? 'Your streak is safe for today. Anything more is a bonus. 🙌' : st.current > 0 ? 'Solve one problem or review 5 cards to keep your streak alive.' : 'Solve one problem today to light your streak.'}</p>
         </div>
       </header>
+
+      <SaveProgressNudge />
 
       <div className="grid-home">
         <section className="card continue">

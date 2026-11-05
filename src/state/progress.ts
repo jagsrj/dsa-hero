@@ -128,7 +128,7 @@ export function markVisited(m: Module) {
 }
 
 export function saveCode(problemId: string, code: string) {
-  update((s) => { s.code[problemId] = code; });
+  update((s) => { s.code[problemId] = code; s.codeAt[problemId] = Date.now(); });
 }
 
 export function takeHint(p: Problem) {
