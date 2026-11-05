@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>DSA Hero Java runner</title>
+</head>
+<body>
+<script type="module">
+  // CheerpJ (https://cheerpj.com): a WebAssembly JVM. Version 5.0+ ships the full JDK, including javac.
+  const params = new URLSearchParams(location.search);
+  const javaVersion = Number(params.get('java') || 17);
+  const cjVersion = (params.get('cj') || '5.0').replace(/[^0-9.]/g, '');
+  let ready = null;
+
+  const post = (msg) => parent.postMessage({ source: 'dsa-runner', ...msg }, '*');
+
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('Could not download the Java engine from ' + src));
+      document.head.appendChild(s);
+    });
+  }
+
+  function init() {
+    if (!ready) {
+      ready = loadScript(`https://cjrtnc.leaningtech.com/${cjVersion}/loader.js`)
+        .then(() => cheerpjInit({ version: javaVersion, status: 'none' }))
+        .then(() => post({ type: 'ready' }));
+      ready.catch(() => { ready = null; });
+    }
+    return ready;
+  }
+
+  async function readText(path) {
+    try { const blob = await cjFileBlob(path); return await blob.text(); }
+    catch (e) { return null; }
+  }
+
+  window.addEventListener('message', async (ev) => {
+    const m = ev.data;
+    if (!m || m.target !== 'dsa-runner') return;
+    if (m.type === 'warmup') { init().catch((e) => post({ type: 'engine-error', id: m.id, message: String(e) })); return; }
+    if (m.type !== 'run') return;
+    const id = m.id;
+    try {
+      post({ id, type: 'status', status: 'loading' });
+      await init();
+      const work = `/files/dsa/run${id}`;
+      const srcIn = `/str/dsa_src_${id}.java`;
+      cheerpOSAddStringFile(srcIn, m.source);
+
+      post({ id, type: 'status', status: 'compiling' });
+      const t0 = performance.now();
+      await cheerpjRunMain('DsaCompile', '/app/cj/', srcIn, m.fileName, work);
+      const diag = (await readText(`${work}/compile.txt`)) ?? 'EXIT 1\nCompiler produced no output.';
+      const exit = Number((diag.match(/^EXIT (-?\d+)/) || [])[1] ?? 1);
+      if (exit !== 0) {
+        post({ id, type: 'compile-error', output: diag.replace(/^EXIT -?\d+\n/, ''), ms: performance.now() - t0 });
+        return;
+      }
+
+      post({ id, type: 'status', status: 'running' });
+      const t1 = performance.now();
+      const rc = await cheerpjRunMain(m.mainClass, `${work}/classes:/app/cj/`, `${work}/result.json`);
+      const result = await readText(`${work}/result.json`);
+      post({ id, type: 'done', exitCode: rc, result, ms: performance.now() - t1 });
+    } catch (e) {
+      post({ id, type: 'engine-error', message: String(e && e.message || e) });
+    }
+  });
+
+  post({ type: 'loaded' });
+</script>
+</body>
+</html>
