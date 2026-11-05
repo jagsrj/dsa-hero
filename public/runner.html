@@ -5,6 +5,8 @@
   <title>DSA Hero Java runner</title>
 </head>
 <body>
+<!-- CheerpJ writes System.out / System.err here when an element with id "console" exists -->
+<pre id="console"></pre>
 <script type="module">
   // CheerpJ (https://cheerpj.com): a WebAssembly JVM. Version 5.0+ ships the full JDK, including javac.
   const params = new URLSearchParams(location.search);
@@ -13,6 +15,20 @@
   let ready = null;
 
   const post = (msg) => parent.postMessage({ source: 'dsa-runner', ...msg }, '*');
+
+  // Capture everything the JVM prints, whether it goes to #console or to the JS console.
+  const consoleEl = document.getElementById('console');
+  let captured = '';
+  for (const level of ['log', 'info', 'warn', 'error']) {
+    const orig = console[level].bind(console);
+    console[level] = (...a) => { captured += a.map((x) => (typeof x === 'string' ? x : (x && x.stack) || String(x))).join(' ') + '\n'; orig(...a); };
+  }
+  function takeOutput() {
+    const t = (consoleEl.textContent || '') + captured;
+    consoleEl.textContent = '';
+    captured = '';
+    return t;
+  }
 
   function loadScript(src) {
     return new Promise((resolve, reject) => {
@@ -39,6 +55,40 @@
     catch (e) { return null; }
   }
 
+  const clip = (s, n = 6000) => (s && s.length > n ? s.slice(0, n) + '\n…(truncated)' : s || '');
+
+  /** Compile with the DsaCompile helper; if it can't run, call javac directly. */
+  async function compile(id, fileName, source, work) {
+    const srcIn = `/str/dsa_src_${id}.java`;
+    cheerpOSAddStringFile(srcIn, source);
+    takeOutput();
+    let rc1;
+    try { rc1 = await cheerpjRunMain('DsaCompile', '/app/cj/', srcIn, fileName, work); }
+    catch (e) { rc1 = 'threw ' + (e && e.message || e); }
+    const log1 = takeOutput();
+    const diag = (await readText(`${work}/compile.txt`)) ?? ((log1.match(/@@DSA_COMPILE@@(EXIT -?\d+)[\s\S]*/) || [])[0]?.replace('@@DSA_COMPILE@@', '') ?? null);
+    if (diag !== null) {
+      const exit = Number((diag.match(/^EXIT (-?\d+)/) || [])[1] ?? 1);
+      return { ok: exit === 0, internal: exit === 99, output: diag.replace(/^EXIT -?\d+\n/, ''), classes: `${work}/classes` };
+    }
+
+    // Fallback: javac directly, reading the source from /str (the file name must match the public class).
+    const direct = `/str/${fileName}`;
+    try { if (typeof cheerpOSRemoveStringFile === 'function') cheerpOSRemoveStringFile(direct); } catch (e) { /* not there yet */ }
+    cheerpOSAddStringFile(direct, source);
+    const outDir = `/files/dsa_direct/run${id}`;
+    let rc2;
+    try { rc2 = await cheerpjRunMain('com.sun.tools.javac.Main', '', '-nowarn', '-encoding', 'UTF-8', '-d', outDir, direct); }
+    catch (e) { rc2 = 'threw ' + (e && e.message || e); }
+    const log2 = takeOutput();
+    if (rc2 === 0) return { ok: true, output: log2, classes: outDir };
+    if (/error:/.test(log2)) return { ok: false, internal: false, output: log2, classes: outDir };
+    return {
+      ok: false, internal: true,
+      output: `The Java engine could not start the compiler.\n\nHelper exit code: ${rc1}\n${clip(log1, 3000)}\n\nDirect javac exit code: ${rc2}\n${clip(log2, 3000)}`.trim(),
+    };
+  }
+
   window.addEventListener('message', async (ev) => {
     const m = ev.data;
     if (!m || m.target !== 'dsa-runner') return;
@@ -49,26 +99,36 @@
       post({ id, type: 'status', status: 'loading' });
       await init();
       const work = `/files/dsa/run${id}`;
-      const srcIn = `/str/dsa_src_${id}.java`;
-      cheerpOSAddStringFile(srcIn, m.source);
 
       post({ id, type: 'status', status: 'compiling' });
       const t0 = performance.now();
-      await cheerpjRunMain('DsaCompile', '/app/cj/', srcIn, m.fileName, work);
-      const diag = (await readText(`${work}/compile.txt`)) ?? 'EXIT 1\nCompiler produced no output.';
-      const exit = Number((diag.match(/^EXIT (-?\d+)/) || [])[1] ?? 1);
-      if (exit !== 0) {
-        post({ id, type: 'compile-error', output: diag.replace(/^EXIT -?\d+\n/, ''), ms: performance.now() - t0 });
+      const c = await compile(id, m.fileName, m.source, work);
+      if (!c.ok) {
+        if (c.internal) post({ id, type: 'engine-error', message: 'The compiler could not run in your browser.', details: clip(c.output) });
+        else post({ id, type: 'compile-error', output: c.output, ms: performance.now() - t0 });
         return;
       }
 
       post({ id, type: 'status', status: 'running' });
       const t1 = performance.now();
-      const rc = await cheerpjRunMain(m.mainClass, `${work}/classes:/app/cj/`, `${work}/result.json`);
-      const result = await readText(`${work}/result.json`);
+      takeOutput();
+      let rc;
+      try { rc = await cheerpjRunMain(m.mainClass, `${c.classes}:/app/cj/`, `${work}/result.json`); }
+      catch (e) { rc = 'threw ' + (e && e.message || e); }
+      const out = takeOutput();
+      // The harness writes result.json, and also prints the same JSON after a marker as a backup.
+      let result = await readText(`${work}/result.json`);
+      if (!result) {
+        const i = out.lastIndexOf('@@DSA_RESULT@@');
+        if (i >= 0) result = out.slice(i + 14).split('\n')[0];
+      }
+      if (!result) {
+        post({ id, type: 'engine-error', message: `The program stopped before the tests finished (exit code ${rc}).`, details: clip(out) });
+        return;
+      }
       post({ id, type: 'done', exitCode: rc, result, ms: performance.now() - t1 });
     } catch (e) {
-      post({ id, type: 'engine-error', message: String(e && e.message || e) });
+      post({ id, type: 'engine-error', message: String(e && e.message || e), details: clip(takeOutput()) });
     }
   });
 

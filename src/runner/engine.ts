@@ -116,7 +116,7 @@ class CheerpJEngine implements Engine {
       p.resolve(outcomeFromResult(m.result, p.c, m.ms));
     } else if (m.type === 'engine-error') {
       this.reset();
-      p.resolve({ kind: 'engine-error', results: [], passed: 0, total: 0, message: `The Java engine failed: ${m.message}` });
+      p.resolve({ kind: 'engine-error', results: [], passed: 0, total: 0, message: `The Java engine failed: ${m.message}`, stdout: m.details || undefined });
     }
   }
 

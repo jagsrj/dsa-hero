@@ -124,7 +124,7 @@ export function ProblemWorkspace({ problem: p, exam, onSolved, next, navigate }:
             <div className="outcome bad"><h4>Compile error</h4><pre className="compile">{outcome.compileErrors}</pre><p className="small muted">The compiler found a problem before running anything. Fix the first error first — later ones are often caused by it.</p></div>
           )}
           {outcome.kind === 'timeout' && <div className="outcome bad"><h4>Time limit exceeded</h4><p>{outcome.message}</p></div>}
-          {(outcome.kind === 'runtime-failure' || outcome.kind === 'engine-error') && <div className="outcome bad"><h4>{outcome.kind === 'engine-error' ? 'Engine problem' : 'Program stopped'}</h4><p>{outcome.message}</p>{outcome.stdout && <pre className="compile">{outcome.stdout}</pre>}</div>}
+          {(outcome.kind === 'runtime-failure' || outcome.kind === 'engine-error') && <div className="outcome bad"><h4>{outcome.kind === 'engine-error' ? 'Engine problem' : 'Program stopped'}</h4><p>{outcome.message}</p>{outcome.stdout && <><p className="small muted">Details (please send these if it keeps happening):</p><pre className="compile">{outcome.stdout}</pre></>}</div>}
           {outcome.kind === 'ok' && (
             <>
               <div className={`outcome ${outcome.passed === outcome.total ? 'good' : 'mixed'}`}>

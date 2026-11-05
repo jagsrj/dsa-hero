@@ -55,7 +55,7 @@ export function Playground() {
         <div className="pg-out" aria-live="polite">
           {status && <div className="run-status"><span className="spinner" aria-hidden />{status === 'loading' ? 'Starting the Java engine…' : status === 'compiling' ? 'Compiling…' : 'Running…'}</div>}
           {out?.kind === 'compile-error' && <pre className="bad">{out.compileErrors}</pre>}
-          {(out?.kind === 'timeout' || out?.kind === 'engine-error' || out?.kind === 'runtime-failure') && <pre className="bad">{out.message}</pre>}
+          {(out?.kind === 'timeout' || out?.kind === 'engine-error' || out?.kind === 'runtime-failure') && <pre className="bad">{out.message}{out.stdout ? '\n\n' + out.stdout : ''}</pre>}
           {res && <pre>{res.stdout || (res.status === 'ran' ? '(nothing printed)' : '')}</pre>}
           {res?.error && <pre className="bad">{res.error}</pre>}
           {!status && !out && <p className="muted small">Press Run (Ctrl/⌘ + Enter).</p>}
